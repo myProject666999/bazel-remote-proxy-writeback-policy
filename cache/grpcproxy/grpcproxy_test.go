@@ -11,7 +11,9 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,7 +22,9 @@ import (
 	"github.com/buchgr/bazel-remote/v2/server"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/proto"
 
@@ -36,6 +40,15 @@ type testProxy struct {
 	dir    string
 	server *grpc.Server
 	proxy  cache.Proxy
+
+	// Test instrumentation for FindMissingBlobs. The mutex guards the
+	// counters because batched lookups issue concurrent RPCs.
+	metricsMu        sync.Mutex
+	findMissingCalls int
+	findMissingBatch []int // number of digests in each request
+	totalFindMissing int
+	findMissingErr   error
+	emptyGetReader   bool // when true, GetActionResult returns nil reader semantics
 }
 
 func (p *testProxy) Contains(kind cache.EntryKind, hash string) bool {
@@ -117,6 +130,13 @@ func (p *testProxy) UpdateActionResult(ctx context.Context, req *pb.UpdateAction
 }
 
 func (p *testProxy) GetActionResult(ctx context.Context, req *pb.GetActionResultRequest) (*pb.ActionResult, error) {
+	if p.emptyGetReader {
+		// A non-NotFound error makes grpcproxy.Get return a nil reader
+		// together with an error. The old grpcproxy.Contains called
+		// rc.Close() before checking the error and panicked on the nil
+		// reader.
+		return nil, status.Error(codes.Internal, "synthetic empty-reader failure")
+	}
 	src := filepath.Join(p.dir, cache.AC.DirName(), req.ActionDigest.Hash)
 	f, err := os.Open(src)
 	if err != nil {
@@ -132,6 +152,17 @@ func (p *testProxy) GetActionResult(ctx context.Context, req *pb.GetActionResult
 }
 
 func (p *testProxy) FindMissingBlobs(tx context.Context, req *pb.FindMissingBlobsRequest) (*pb.FindMissingBlobsResponse, error) {
+	p.metricsMu.Lock()
+	p.findMissingCalls++
+	p.findMissingBatch = append(p.findMissingBatch, len(req.BlobDigests))
+	p.totalFindMissing += len(req.BlobDigests)
+	findMissingErr := p.findMissingErr
+	p.metricsMu.Unlock()
+
+	if findMissingErr != nil {
+		return nil, findMissingErr
+	}
+
 	digests := []*pb.Digest{}
 	for _, digest := range req.BlobDigests {
 		src := filepath.Join(p.dir, cache.CAS.DirName(), digest.Hash)
@@ -382,4 +413,182 @@ func TestEverything(t *testing.T) {
 
 func TestEverythingZstd(t *testing.T) {
 	runTest(t, "zstd")
+}
+
+// TestContainsManySingleRPC verifies that a batched existence check against
+// the gRPC backend results in exactly one FindMissingBlobs call carrying all
+// digests, regardless of how the disk cache splits its work.
+func TestContainsManySingleRPC(t *testing.T) {
+	t.Parallel()
+
+	proxyFixture := newProxy(t, testutils.TempDir(t), "uncompressed")
+	t.Cleanup(proxyFixture.server.Stop)
+
+	// Seed some blobs in the backend so the hit/miss mix is meaningful.
+	var existingHashes []string
+	for i := 0; i < 3; i++ {
+		data, digest := testutils.RandomDataAndDigest(100)
+		dest := filepath.Join(proxyFixture.dir, cache.CAS.DirName(), digest.Hash)
+		if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(dest, data, 0644); err != nil {
+			t.Fatal(err)
+		}
+		existingHashes = append(existingHashes, digest.Hash)
+	}
+
+	// Build a batch mixing existing and non-existing digests.
+	hashes := make([]string, 0, 8)
+	sizes := make([]int64, 0, 8)
+	for _, h := range existingHashes {
+		hashes = append(hashes, h)
+		sizes = append(sizes, 100)
+	}
+	for i := 0; i < 5; i++ {
+		_, d := testutils.RandomDataAndDigest(200)
+		hashes = append(hashes, d.Hash)
+		sizes = append(sizes, d.SizeBytes)
+	}
+
+	batchProxy := proxyFixture.proxy.(cache.BatchProxy)
+	results := batchProxy.ContainsMany(context.Background(), hashes, sizes)
+
+	if len(results) != len(hashes) {
+		t.Fatalf("expected %d results, got %d", len(hashes), len(results))
+	}
+	if proxyFixture.findMissingCalls != 1 {
+		t.Fatalf("expected exactly 1 FindMissingBlobs RPC, got %d", proxyFixture.findMissingCalls)
+	}
+	if proxyFixture.totalFindMissing != len(hashes) {
+		t.Fatalf("expected all %d digests in the single RPC, got %d",
+			len(hashes), proxyFixture.totalFindMissing)
+	}
+
+	existingSet := map[string]bool{}
+	for _, h := range existingHashes {
+		existingSet[h] = true
+	}
+	for i, res := range results {
+		if res.Hash != hashes[i] {
+			t.Fatalf("result ordering mismatch at %d", i)
+		}
+		wantExists := existingSet[hashes[i]]
+		if res.Exists != wantExists {
+			t.Fatalf("digest %d: expected exists=%v, got %v", i, wantExists, res.Exists)
+		}
+		if res.Err != nil {
+			t.Fatalf("digest %d: unexpected error %v", i, res.Err)
+		}
+	}
+}
+
+// TestContainsManyBackendError verifies that an RPC failure fails every
+// result (with the error attached), so the disk layer reports misses rather
+// than false hits.
+func TestContainsManyBackendError(t *testing.T) {
+	t.Parallel()
+
+	proxyFixture := newProxy(t, testutils.TempDir(t), "uncompressed")
+	t.Cleanup(proxyFixture.server.Stop)
+	proxyFixture.findMissingErr = status.Error(codes.Unavailable, "backend down")
+
+	_, d := testutils.RandomDataAndDigest(100)
+	batchProxy := proxyFixture.proxy.(cache.BatchProxy)
+	results := batchProxy.ContainsMany(context.Background(),
+		[]string{d.Hash}, []int64{d.SizeBytes})
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Exists {
+		t.Fatal("errored backend must not report existence")
+	}
+	if results[0].Err == nil {
+		t.Fatal("expected the RPC error to be attached to the result")
+	}
+}
+
+// TestContainsACNilReader verifies that the AC existence path no longer
+// panics when the backend returns a nil reader/empty result. Previously
+// grpcproxy.Contains called Close on a nil io.ReadCloser.
+func TestContainsACNilReader(t *testing.T) {
+	t.Parallel()
+
+	proxyFixture := newProxy(t, testutils.TempDir(t), "uncompressed")
+	t.Cleanup(proxyFixture.server.Stop)
+	proxyFixture.emptyGetReader = true
+
+	_, digest := testutils.RandomDataAndDigest(64)
+
+	// This must return cleanly instead of panicking on a nil reader.
+	ok, size := proxyFixture.proxy.Contains(context.Background(),
+		cache.AC, digest.Hash, digest.SizeBytes)
+	if ok || size != -1 {
+		t.Fatalf("expected a miss for an empty AC result, got ok=%v size=%d", ok, size)
+	}
+}
+
+// TestDiskFindMissingBatchesOverGrpc drives the full path: a disk cache
+// backed by the gRPC proxy. Repeated digests are checked once and the
+// configured batch size controls how many FindMissingBlobs RPCs the fake
+// backend receives.
+func TestDiskFindMissingBatchesOverGrpc(t *testing.T) {
+	t.Parallel()
+
+	proxyFixture := newProxy(t, testutils.TempDir(t), "uncompressed")
+	t.Cleanup(proxyFixture.server.Stop)
+
+	diskCache, err := disk.New(
+		testutils.TempDir(t),
+		8*1024*1024,
+		disk.WithProxyBackend(proxyFixture.proxy),
+		disk.WithStorageMode("uncompressed"),
+		disk.WithAccessLogger(logger),
+		disk.WithProxyContainsBatchSize(3),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 4 unique digests, with duplicates, all absent locally and on the
+	// backend.
+	_, d1 := testutils.RandomDataAndDigest(100)
+	_, d2 := testutils.RandomDataAndDigest(100)
+	_, d3 := testutils.RandomDataAndDigest(100)
+	_, d4 := testutils.RandomDataAndDigest(100)
+
+	blobs := []*pb.Digest{&d1, &d1, &d2, &d3, &d3, &d3, &d4}
+
+	missing, err := diskCache.FindMissingCasBlobs(context.Background(), blobs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// All digests are missing, so every input slot survives, but the set of
+	// distinct hashes must still be exactly the four unique ones.
+	uniqueMissing := map[string]bool{}
+	for _, d := range missing {
+		uniqueMissing[d.Hash] = true
+	}
+	if len(uniqueMissing) != 4 {
+		t.Fatalf("expected 4 unique missing digests, got %d", len(uniqueMissing))
+	}
+
+	// Four unique digests with a batch size of three => two RPCs, and the
+	// duplicate entries must not add any extra digests. Batches run
+	// concurrently, so their completion (and thus RPC) order is not
+	// guaranteed; assert the multiset of batch sizes instead.
+	if proxyFixture.findMissingCalls != 2 {
+		t.Fatalf("expected 2 batched FindMissingBlobs RPCs, got %d",
+			proxyFixture.findMissingCalls)
+	}
+	if proxyFixture.totalFindMissing != 4 {
+		t.Fatalf("expected 4 unique digests sent to the backend, got %d",
+			proxyFixture.totalFindMissing)
+	}
+	batches := append([]int(nil), proxyFixture.findMissingBatch...)
+	sort.Ints(batches)
+	if len(batches) != 2 || batches[0] != 1 || batches[1] != 3 {
+		t.Fatalf("expected batch sizes {1,3}, got %v", proxyFixture.findMissingBatch)
+	}
 }

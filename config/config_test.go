@@ -57,6 +57,8 @@ log_timezone: local
 		MaxQueuedUploads:            1000000,
 		MaxBlobSize:                 math.MaxInt64,
 		MaxProxyBlobSize:            math.MaxInt64,
+		ProxyWriteBackMode:          "all",
+		MaxProxyWriteBackBlobSize:   math.MaxInt64,
 		MetricsDurationBuckets:      []float64{.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320},
 		AccessLogLevel:              "none",
 		LogTimezone:                 "local",
@@ -95,14 +97,16 @@ gcs_proxy:
 			UseDefaultCredentials: false,
 			JSONCredentialsFile:   "/opt/creds.json",
 		},
-		NumUploaders:           100,
-		MinTLSVersion:          "1.0",
-		MaxQueuedUploads:       1000000,
-		MaxBlobSize:            math.MaxInt64,
-		MaxProxyBlobSize:       math.MaxInt64,
-		MetricsDurationBuckets: []float64{.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320},
-		AccessLogLevel:         "all",
-		LogTimezone:            "UTC",
+		NumUploaders:              100,
+		MinTLSVersion:             "1.0",
+		MaxQueuedUploads:          1000000,
+		MaxBlobSize:               math.MaxInt64,
+		MaxProxyBlobSize:          math.MaxInt64,
+		ProxyWriteBackMode:        "all",
+		MaxProxyWriteBackBlobSize: math.MaxInt64,
+		MetricsDurationBuckets:    []float64{.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320},
+		AccessLogLevel:            "all",
+		LogTimezone:               "UTC",
 	}
 
 	if !cmp.Equal(config, expectedConfig) {
@@ -139,14 +143,16 @@ http_proxy:
 		HTTPBackend: &URLBackendConfig{
 			BaseURL: url,
 		},
-		NumUploaders:           100,
-		MinTLSVersion:          "1.0",
-		MaxQueuedUploads:       1000000,
-		MaxBlobSize:            math.MaxInt64,
-		MaxProxyBlobSize:       math.MaxInt64,
-		MetricsDurationBuckets: []float64{.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320},
-		AccessLogLevel:         "all",
-		LogTimezone:            "UTC",
+		NumUploaders:              100,
+		MinTLSVersion:             "1.0",
+		MaxQueuedUploads:          1000000,
+		MaxBlobSize:               math.MaxInt64,
+		MaxProxyBlobSize:          math.MaxInt64,
+		ProxyWriteBackMode:        "all",
+		MaxProxyWriteBackBlobSize: math.MaxInt64,
+		MetricsDurationBuckets:    []float64{.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320},
+		AccessLogLevel:            "all",
+		LogTimezone:               "UTC",
 	}
 
 	if !cmp.Equal(config, expectedConfig) {
@@ -282,14 +288,16 @@ s3_proxy:
 			AccessKeyID:     "EXAMPLE_ACCESS_KEY",
 			SecretAccessKey: "EXAMPLE_SECRET_KEY",
 		},
-		NumUploaders:           100,
-		MinTLSVersion:          "1.0",
-		MaxQueuedUploads:       1000000,
-		MaxBlobSize:            math.MaxInt64,
-		MaxProxyBlobSize:       math.MaxInt64,
-		MetricsDurationBuckets: []float64{.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320},
-		AccessLogLevel:         "all",
-		LogTimezone:            "UTC",
+		NumUploaders:              100,
+		MinTLSVersion:             "1.0",
+		MaxQueuedUploads:          1000000,
+		MaxBlobSize:               math.MaxInt64,
+		MaxProxyBlobSize:          math.MaxInt64,
+		ProxyWriteBackMode:        "all",
+		MaxProxyWriteBackBlobSize: math.MaxInt64,
+		MetricsDurationBuckets:    []float64{.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320},
+		AccessLogLevel:            "all",
+		LogTimezone:               "UTC",
 	}
 
 	if !cmp.Equal(config, expectedConfig) {
@@ -331,14 +339,16 @@ ldap:
 			GroupsQuery:       "(|(memberOf=CN=bazel-users,OU=Groups,OU=My Users,DC=example,DC=com)(memberOf=CN=other-users,OU=Groups2,OU=Alien Users,DC=foo,DC=org))",
 			CacheTime:         3600 * time.Second,
 		},
-		NumUploaders:           100,
-		MinTLSVersion:          "1.0",
-		MaxQueuedUploads:       1000000,
-		MaxBlobSize:            math.MaxInt64,
-		MaxProxyBlobSize:       math.MaxInt64,
-		MetricsDurationBuckets: []float64{.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320},
-		AccessLogLevel:         "all",
-		LogTimezone:            "UTC",
+		NumUploaders:              100,
+		MinTLSVersion:             "1.0",
+		MaxQueuedUploads:          1000000,
+		MaxBlobSize:               math.MaxInt64,
+		MaxProxyBlobSize:          math.MaxInt64,
+		ProxyWriteBackMode:        "all",
+		MaxProxyWriteBackBlobSize: math.MaxInt64,
+		MetricsDurationBuckets:    []float64{.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320},
+		AccessLogLevel:            "all",
+		LogTimezone:               "UTC",
 	}
 
 	if !cmp.Equal(config, expectedConfig) {
@@ -359,20 +369,22 @@ profile_address: :7070
 	}
 
 	expectedConfig := &Config{
-		HTTPAddress:            "localhost:1234",
-		Dir:                    "/opt/cache-dir",
-		MaxSize:                42,
-		StorageMode:            "zstd",
-		ZstdImplementation:     "go",
-		ProfileAddress:         ":7070",
-		NumUploaders:           100,
-		MinTLSVersion:          "1.0",
-		MaxQueuedUploads:       1000000,
-		MaxBlobSize:            math.MaxInt64,
-		MaxProxyBlobSize:       math.MaxInt64,
-		MetricsDurationBuckets: []float64{.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320},
-		AccessLogLevel:         "all",
-		LogTimezone:            "UTC",
+		HTTPAddress:               "localhost:1234",
+		Dir:                       "/opt/cache-dir",
+		MaxSize:                   42,
+		StorageMode:               "zstd",
+		ZstdImplementation:        "go",
+		ProfileAddress:            ":7070",
+		NumUploaders:              100,
+		MinTLSVersion:             "1.0",
+		MaxQueuedUploads:          1000000,
+		MaxBlobSize:               math.MaxInt64,
+		MaxProxyBlobSize:          math.MaxInt64,
+		ProxyWriteBackMode:        "all",
+		MaxProxyWriteBackBlobSize: math.MaxInt64,
+		MetricsDurationBuckets:    []float64{.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320},
+		AccessLogLevel:            "all",
+		LogTimezone:               "UTC",
 	}
 
 	if !cmp.Equal(config, expectedConfig) {
@@ -408,19 +420,21 @@ endpoint_metrics_duration_buckets: [.005, .1, 5]
 	}
 
 	expectedConfig := &Config{
-		HTTPAddress:            "localhost:1234",
-		Dir:                    "/opt/cache-dir",
-		MaxSize:                42,
-		StorageMode:            "zstd",
-		ZstdImplementation:     "go",
-		MinTLSVersion:          "1.0",
-		NumUploaders:           100,
-		MaxQueuedUploads:       1000000,
-		MaxBlobSize:            math.MaxInt64,
-		MaxProxyBlobSize:       math.MaxInt64,
-		MetricsDurationBuckets: []float64{0.005, 0.1, 5},
-		AccessLogLevel:         "all",
-		LogTimezone:            "UTC",
+		HTTPAddress:               "localhost:1234",
+		Dir:                       "/opt/cache-dir",
+		MaxSize:                   42,
+		StorageMode:               "zstd",
+		ZstdImplementation:        "go",
+		MinTLSVersion:             "1.0",
+		NumUploaders:              100,
+		MaxQueuedUploads:          1000000,
+		MaxBlobSize:               math.MaxInt64,
+		MaxProxyBlobSize:          math.MaxInt64,
+		ProxyWriteBackMode:        "all",
+		MaxProxyWriteBackBlobSize: math.MaxInt64,
+		MetricsDurationBuckets:    []float64{0.005, 0.1, 5},
+		AccessLogLevel:            "all",
+		LogTimezone:               "UTC",
 	}
 
 	if !cmp.Equal(config, expectedConfig) {
@@ -430,14 +444,16 @@ endpoint_metrics_duration_buckets: [.005, .1, 5]
 
 func TestMetricsDurationBucketsNoDuplicates(t *testing.T) {
 	testConfig := &Config{
-		HTTPAddress:            "localhost:8080",
-		MaxSize:                42,
-		MaxBlobSize:            200,
-		MaxProxyBlobSize:       math.MaxInt64,
-		Dir:                    "/opt/cache-dir",
-		StorageMode:            "uncompressed",
-		ZstdImplementation:     "go",
-		MetricsDurationBuckets: []float64{1, 2, 3, 3},
+		HTTPAddress:               "localhost:8080",
+		MaxSize:                   42,
+		MaxBlobSize:               200,
+		MaxProxyBlobSize:          math.MaxInt64,
+		ProxyWriteBackMode:        "all",
+		MaxProxyWriteBackBlobSize: math.MaxInt64,
+		Dir:                       "/opt/cache-dir",
+		StorageMode:               "uncompressed",
+		ZstdImplementation:        "go",
+		MetricsDurationBuckets:    []float64{1, 2, 3, 3},
 	}
 	err := validateConfig(testConfig)
 	if err == nil {
@@ -539,20 +555,22 @@ storage_mode: zstd
 	}
 
 	expectedConfig := &Config{
-		HTTPAddress:            "localhost:1234",
-		GRPCAddress:            "localhost:5678",
-		Dir:                    "/opt/cache-dir",
-		MaxSize:                42,
-		StorageMode:            "zstd",
-		ZstdImplementation:     "go",
-		NumUploaders:           100,
-		MinTLSVersion:          "1.0",
-		MaxQueuedUploads:       1000000,
-		MaxBlobSize:            math.MaxInt64,
-		MaxProxyBlobSize:       math.MaxInt64,
-		MetricsDurationBuckets: []float64{.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320},
-		AccessLogLevel:         "all",
-		LogTimezone:            "UTC",
+		HTTPAddress:               "localhost:1234",
+		GRPCAddress:               "localhost:5678",
+		Dir:                       "/opt/cache-dir",
+		MaxSize:                   42,
+		StorageMode:               "zstd",
+		ZstdImplementation:        "go",
+		NumUploaders:              100,
+		MinTLSVersion:             "1.0",
+		MaxQueuedUploads:          1000000,
+		MaxBlobSize:               math.MaxInt64,
+		MaxProxyBlobSize:          math.MaxInt64,
+		ProxyWriteBackMode:        "all",
+		MaxProxyWriteBackBlobSize: math.MaxInt64,
+		MetricsDurationBuckets:    []float64{.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320},
+		AccessLogLevel:            "all",
+		LogTimezone:               "UTC",
 	}
 
 	if !cmp.Equal(config, expectedConfig) {
@@ -573,20 +591,22 @@ storage_mode: zstd
 	}
 
 	expectedConfig := &Config{
-		HTTPAddress:            "unix:///tmp/http.sock",
-		GRPCAddress:            "unix:///tmp/grpc.sock",
-		Dir:                    "/opt/cache-dir",
-		MaxSize:                42,
-		StorageMode:            "zstd",
-		ZstdImplementation:     "go",
-		NumUploaders:           100,
-		MinTLSVersion:          "1.0",
-		MaxQueuedUploads:       1000000,
-		MaxBlobSize:            math.MaxInt64,
-		MaxProxyBlobSize:       math.MaxInt64,
-		MetricsDurationBuckets: []float64{.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320},
-		AccessLogLevel:         "all",
-		LogTimezone:            "UTC",
+		HTTPAddress:               "unix:///tmp/http.sock",
+		GRPCAddress:               "unix:///tmp/grpc.sock",
+		Dir:                       "/opt/cache-dir",
+		MaxSize:                   42,
+		StorageMode:               "zstd",
+		ZstdImplementation:        "go",
+		NumUploaders:              100,
+		MinTLSVersion:             "1.0",
+		MaxQueuedUploads:          1000000,
+		MaxBlobSize:               math.MaxInt64,
+		MaxProxyBlobSize:          math.MaxInt64,
+		ProxyWriteBackMode:        "all",
+		MaxProxyWriteBackBlobSize: math.MaxInt64,
+		MetricsDurationBuckets:    []float64{.5, 1, 2.5, 5, 10, 20, 40, 80, 160, 320},
+		AccessLogLevel:            "all",
+		LogTimezone:               "UTC",
 	}
 
 	if !cmp.Equal(config, expectedConfig) {
@@ -608,5 +628,87 @@ func TestSocketPathMissing(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "'http_address'") {
 		t.Fatal("Expected the error message to mention the missing 'http_address' key/flag")
+	}
+}
+
+func TestWritebackConfigDefaults(t *testing.T) {
+	yaml := `host: localhost
+port: 8080
+dir: /opt/cache-dir
+max_size: 100
+`
+	cfg, err := NewFromYaml([]byte(yaml))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ProxyWriteBackMode != "all" {
+		t.Fatalf("expected default writeback mode \"all\", got %q", cfg.ProxyWriteBackMode)
+	}
+	if cfg.MaxProxyWriteBackBlobSize != math.MaxInt64 {
+		t.Fatalf("expected unlimited default writeback size, got %d", cfg.MaxProxyWriteBackBlobSize)
+	}
+}
+
+func TestWritebackConfigValues(t *testing.T) {
+	for _, mode := range []string{"all", "cas", "ac", "none"} {
+		yaml := "host: localhost\nport: 8080\ndir: /opt/cache-dir\nmax_size: 100\n" +
+			"proxy_writeback_mode: " + mode + "\n" +
+			"max_proxy_writeback_blob_size: 1234\n" +
+			"max_proxy_contains_batch_size: 50\n"
+		cfg, err := NewFromYaml([]byte(yaml))
+		if err != nil {
+			t.Fatalf("mode %s: %v", mode, err)
+		}
+		if cfg.ProxyWriteBackMode != mode {
+			t.Fatalf("expected mode %q, got %q", mode, cfg.ProxyWriteBackMode)
+		}
+		if cfg.MaxProxyWriteBackBlobSize != 1234 {
+			t.Fatalf("expected writeback size 1234, got %d", cfg.MaxProxyWriteBackBlobSize)
+		}
+		if cfg.MaxProxyContainsBatchSize != 50 {
+			t.Fatalf("expected batch size 50, got %d", cfg.MaxProxyContainsBatchSize)
+		}
+	}
+}
+
+func TestWritebackConfigInvalidMode(t *testing.T) {
+	yaml := `host: localhost
+port: 8080
+dir: /opt/cache-dir
+max_size: 100
+proxy_writeback_mode: bogus
+`
+	if _, err := NewFromYaml([]byte(yaml)); err == nil {
+		t.Fatal("expected an error for an invalid writeback mode")
+	}
+}
+
+func TestWritebackConfigNegativeSizes(t *testing.T) {
+	base := "host: localhost\nport: 8080\ndir: /opt/cache-dir\nmax_size: 100\n"
+	if _, err := NewFromYaml([]byte(base + "max_proxy_writeback_blob_size: -1\n")); err == nil {
+		t.Fatal("expected an error for a negative writeback blob size")
+	}
+	if _, err := NewFromYaml([]byte(base + "max_proxy_contains_batch_size: -1\n")); err == nil {
+		t.Fatal("expected an error for a negative contains batch size")
+	}
+}
+
+func TestWritebackCoexistsWithSingleProxyRule(t *testing.T) {
+	// The writeback settings must not conflict with the "at most one proxy
+	// backend" validation.
+	yaml := `host: localhost
+port: 8080
+dir: /opt/cache-dir
+max_size: 100
+proxy_writeback_mode: none
+http_proxy:
+  url: http://remote-cache.example.com:8080/cache
+`
+	cfg, err := NewFromYaml([]byte(yaml))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ProxyWriteBackMode != "none" || cfg.HTTPBackend == nil {
+		t.Fatalf("writeback mode and single proxy backend should coexist: %+v", cfg)
 	}
 }

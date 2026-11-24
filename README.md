@@ -244,6 +244,28 @@ OPTIONS:
       to preexisting blobs in the cache. (default: 9223372036854775807)
       [$BAZEL_REMOTE_MAX_PROXY_BLOB_SIZE]
 
+   --proxy_writeback_mode value Controls which locally committed cache
+      entries are also written back to the proxy backend. Allowed values: "all"
+      (both AC and CAS, the default and historical behavior), "cas" (only CAS
+      entries), "ac" (only AC entries, which may leave dangling entries on the
+      backend) or "none" (never write back, for a read-only backend). (default:
+      "all") [$BAZEL_REMOTE_PROXY_WRITEBACK_MODE]
+
+   --max_proxy_writeback_blob_size value The maximum logical/uncompressed CAS
+      blob size that will be written back (uploaded) to the proxy backend. This
+      is independent of --max_proxy_blob_size, which limits what is downloaded.
+      AC entries are not size-limited. The default disables the limit. (default:
+      9223372036854775807)
+      [$BAZEL_REMOTE_MAX_PROXY_WRITEBACK_BLOB_SIZE]
+
+   --max_proxy_contains_batch_size value The maximum number of distinct,
+      locally missing digests sent to the proxy backend in a single batched
+      existence check. Only affects proxy backends that support batching
+      (currently the gRPC proxy); other backends check one digest at a time. 0
+      selects the built-in default. Duplicate digests in a request are always
+      checked once. (default: 0, ie the built-in default)
+      [$BAZEL_REMOTE_MAX_PROXY_CONTAINS_BATCH_SIZE]
+
    --num_uploaders value When using proxy backends, sets the number of
       Goroutines to process parallel uploads to backend. (default: 100)
       [$BAZEL_REMOTE_NUM_UPLOADERS]
@@ -562,6 +584,17 @@ http_address: 0.0.0.0:8080
 #max_queued_uploads: 1000000
 # The largest blob size that will be accepted, for example 10MB:
 #max_blob_size: 10485760
+# The largest blob that will be downloaded from the proxy backend:
+#max_proxy_blob_size: 10485760
+# Which entries are written back to the proxy backend. One of
+# "all" (default), "cas", "ac" or "none" (read-only backend):
+#proxy_writeback_mode: all
+# The largest CAS blob that will be uploaded to the proxy backend
+# (independent of max_proxy_blob_size; 0 means unlimited):
+#max_proxy_writeback_blob_size: 10485760
+# How many distinct missing digests are sent per batched proxy
+# existence check (0 selects the built-in default):
+#max_proxy_contains_batch_size: 100
 #
 #gcs_proxy:
 #  bucket: gcs-bucket

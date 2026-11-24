@@ -1,0 +1,44 @@
+# Example bazel-remote YAML configuration showing the proxy writeback and
+# batched existence-check options. All values shown below are the defaults;
+# omitting these keys reproduces the historical behavior.
+
+host: localhost
+port: 8080
+grpc_port: 9092
+dir: /opt/cache-dir
+max_size: 100
+
+# Which locally committed cache entries are also written back (uploaded) to
+# the proxy backend. Allowed values:
+#   all  - both AC and CAS entries (default, historical behavior)
+#   cas  - only CAS entries
+#   ac   - only AC entries; this can leave dangling entries on the backend
+#          when their CAS dependencies are not uploaded, so a startup
+#          warning is emitted
+#   none - never write back; use this for a read-only proxy backend
+proxy_writeback_mode: all
+
+# Maximum logical/uncompressed CAS blob size that will be written back to
+# the proxy backend. This is independent of max_proxy_blob_size (which
+# limits what is downloaded): the push and pull limits answer different
+# questions. 0 (the default) means unlimited.
+max_proxy_writeback_blob_size: 0
+
+# Maximum number of distinct, locally missing digests sent to the proxy
+# backend in one batched existence check. Only affects backends that
+# support batching (currently the gRPC proxy); other backends still check
+# one digest at a time. Duplicate digests in a request are always checked
+# once. 0 selects the built-in default.
+max_proxy_contains_batch_size: 0
+
+# Pull-side limit, kept separate from the writeback limit above: the
+# maximum logical/uncompressed blob size that will be downloaded from the
+# proxy backend.
+max_proxy_blob_size: 9223372036854775807
+
+# Example proxy backend (at most one of http_proxy/grpc_proxy/s3_proxy/
+# gcs_proxy/azblob_proxy may be configured).
+# http_proxy:
+#   url: https://remote-cache.example.com:8080/cache
+# grpc_proxy:
+#   url: grpc://remote-cache.example.com:9090

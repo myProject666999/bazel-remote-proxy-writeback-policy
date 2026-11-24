@@ -81,6 +81,13 @@ type remoteGrpcProxyCache struct {
 	v2mode       bool
 }
 
+// Compile-time assertions: the gRPC proxy implements both the basic
+// cache.Proxy contract and the optional batched cache.BatchProxy extension.
+var (
+	_ cache.Proxy      = (*remoteGrpcProxyCache)(nil)
+	_ cache.BatchProxy = (*remoteGrpcProxyCache)(nil)
+)
+
 func New(clients *GrpcClients, storageMode string,
 	accessLogger cache.Logger, errorLogger cache.Logger,
 	numUploaders, maxQueuedUploads int) cache.Proxy {
@@ -123,12 +130,14 @@ func (r *remoteGrpcProxyCache) UploadFile(item backendproxy.UploadReq) {
 			}
 		}
 		if read != item.SizeOnDisk {
+			backendproxy.RecordBackendError()
 			logResponse(r.errorLogger, "Update", "Unexpected short read", item.Kind, item.Hash)
 			return
 		}
 		ar := &pb.ActionResult{}
 		err := proto.Unmarshal(data, ar)
 		if err != nil {
+			backendproxy.RecordBackendError()
 			logResponse(r.errorLogger, "Update", err.Error(), item.Kind, item.Hash)
 			return
 		}
@@ -143,12 +152,14 @@ func (r *remoteGrpcProxyCache) UploadFile(item backendproxy.UploadReq) {
 		}
 		_, err = r.clients.ac.UpdateActionResult(context.Background(), req)
 		if err != nil {
+			backendproxy.RecordBackendError()
 			logResponse(r.errorLogger, "Update", err.Error(), item.Kind, item.Hash)
 		}
 		return
 	case cache.CAS:
 		stream, err := r.clients.bs.Write(context.Background())
 		if err != nil {
+			backendproxy.RecordBackendError()
 			logResponse(r.errorLogger, "Write", err.Error(), item.Kind, item.Hash)
 			return
 		}
@@ -169,6 +180,7 @@ func (r *remoteGrpcProxyCache) UploadFile(item backendproxy.UploadReq) {
 		for {
 			n, err := item.Rc.Read(buf)
 			if err != nil && err != io.EOF {
+				backendproxy.RecordBackendError()
 				logResponse(r.errorLogger, "Write", err.Error(), item.Kind, item.Hash)
 				err := stream.CloseSend()
 				if err != nil {
@@ -188,12 +200,14 @@ func (r *remoteGrpcProxyCache) UploadFile(item backendproxy.UploadReq) {
 				}
 				err := stream.Send(req)
 				if err != nil {
+					backendproxy.RecordBackendError()
 					logResponse(r.errorLogger, "Write", err.Error(), item.Kind, item.Hash)
 					return
 				}
 			} else {
 				_, err = stream.CloseAndRecv()
 				if err != nil {
+					backendproxy.RecordBackendError()
 					logResponse(r.errorLogger, "Write", err.Error(), item.Kind, item.Hash)
 					return
 				}
@@ -202,6 +216,7 @@ func (r *remoteGrpcProxyCache) UploadFile(item backendproxy.UploadReq) {
 			}
 		}
 	default:
+		backendproxy.RecordBackendError()
 		logResponse(r.errorLogger, "Write", "Unexpected kind", item.Kind, item.Hash)
 		return
 	}
@@ -225,7 +240,7 @@ func (r *remoteGrpcProxyCache) Put(ctx context.Context, kind cache.EntryKind, ha
 	case r.uploadQueue <- item:
 	default:
 		r.errorLogger.Printf("too many uploads queued")
-		_ = rc.Close()
+		backendproxy.RecordQueueFull(rc)
 	}
 }
 
@@ -332,7 +347,9 @@ func (r *remoteGrpcProxyCache) Contains(ctx context.Context, kind cache.EntryKin
 		// is to get the object and discard the result
 		// We don't expect this to ever be called anyways since it is not part of the grpc protocol
 		rc, size, err := r.Get(ctx, kind, hash, size)
-		_ = rc.Close()
+		if rc != nil {
+			_ = rc.Close()
+		}
 		if err != nil || size < 0 {
 			return false, -1
 		}
@@ -371,4 +388,53 @@ func (r *remoteGrpcProxyCache) Contains(ctx context.Context, kind cache.EntryKin
 		logResponse(r.errorLogger, "Contains", "Unexpected kind", kind, hash)
 		return false, -1
 	}
+}
+
+// ContainsMany implements cache.BatchProxy. The remote execution protocol
+// accepts several digests in a single FindMissingBlobs call, so the whole
+// batch costs one RPC. hashes and sizes have the same length and result
+// index i corresponds to hashes[i]. A failed RPC fails every result: the
+// callers treat errored results as misses, so the response still only
+// reports blobs that are known to exist.
+func (r *remoteGrpcProxyCache) ContainsMany(ctx context.Context, hashes []string, sizes []int64) []cache.ProxyContainsResult {
+	results := make([]cache.ProxyContainsResult, len(hashes))
+	if len(hashes) == 0 {
+		return results
+	}
+
+	digests := make([]*pb.Digest, len(hashes))
+	for i := range hashes {
+		digests[i] = &pb.Digest{
+			Hash:      hashes[i],
+			SizeBytes: sizes[i],
+		}
+		results[i] = cache.ProxyContainsResult{Hash: hashes[i], Exists: false, Size: -1}
+	}
+
+	req := &pb.FindMissingBlobsRequest{BlobDigests: digests}
+	res, err := r.clients.cas.FindMissingBlobs(ctx, req)
+	if err != nil {
+		logResponse(r.errorLogger, "Contains", err.Error(), cache.CAS, "")
+		for i := range results {
+			results[i].Err = err
+		}
+		return results
+	}
+
+	missing := make(map[string]struct{}, len(res.MissingBlobDigests))
+	for _, d := range res.MissingBlobDigests {
+		missing[d.GetHash()] = struct{}{}
+	}
+
+	for i, hash := range hashes {
+		if _, isMissing := missing[hash]; isMissing {
+			logResponse(r.accessLogger, "Contains", "Not Found", cache.CAS, hash)
+			continue
+		}
+		logResponse(r.accessLogger, "Contains", "Success", cache.CAS, hash)
+		results[i].Exists = true
+		results[i].Size = sizes[i]
+	}
+
+	return results
 }

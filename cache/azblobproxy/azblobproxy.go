@@ -62,7 +62,7 @@ func (c *azBlobCache) Put(ctx context.Context, kind cache.EntryKind, hash string
 	}:
 	default:
 		c.errorLogger.Printf("too many uploads queued\n")
-		_ = rc.Close()
+		backendproxy.RecordQueueFull(rc)
 	}
 }
 
@@ -209,6 +209,9 @@ func (c *azBlobCache) UploadFile(item backendproxy.UploadReq) {
 
 	client := c.containerClient.NewBlockBlobClient(key)
 	_, err := client.Upload(context.Background(), item.Rc.(io.ReadSeekCloser), nil)
+	if err != nil {
+		backendproxy.RecordBackendError()
+	}
 
 	logResponse(c.accessLogger, "UPLOAD", c.storageAccount, c.container, key, err)
 }

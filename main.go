@@ -163,6 +163,17 @@ func run(ctx *cli.Context) error {
 		disk.WithMaxSizeHardLimit(int64(c.MaxSizeHardLimit) * 1024 * 1024 * 1024),
 		disk.WithAccessLogger(c.AccessLogger),
 	}
+
+	writebackMode, err := disk.ParseWritebackMode(c.ProxyWriteBackMode)
+	if err != nil {
+		log.Fatal(err)
+	}
+	writebackPolicy, err := disk.NewWritebackPolicy(writebackMode, c.MaxProxyWriteBackBlobSize)
+	if err != nil {
+		log.Fatal(err)
+	}
+	opts = append(opts, disk.WithWritebackPolicy(writebackPolicy))
+	opts = append(opts, disk.WithProxyContainsBatchSize(c.MaxProxyContainsBatchSize))
 	if c.ProxyBackend != nil {
 		opts = append(opts, disk.WithProxyBackend(c.ProxyBackend))
 	}

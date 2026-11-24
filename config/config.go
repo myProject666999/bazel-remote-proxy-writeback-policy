@@ -134,6 +134,22 @@ type Config struct {
 	MaxBlobSize                 int64                     `yaml:"max_blob_size"`
 	MaxProxyBlobSize            int64                     `yaml:"max_proxy_blob_size"`
 
+	// ProxyWriteBackMode selects which locally committed entries are also
+	// uploaded to the proxy backend. Allowed values are "all" (default,
+	// the historical behavior), "cas", "ac" and "none". Empty means "all".
+	ProxyWriteBackMode string `yaml:"proxy_writeback_mode"`
+
+	// MaxProxyWriteBackBlobSize limits the logical size of CAS entries that
+	// are written back to the proxy backend. It is independent of
+	// MaxProxyBlobSize, which limits downloads. A value <= 0 disables the
+	// limit.
+	MaxProxyWriteBackBlobSize int64 `yaml:"max_proxy_writeback_blob_size"`
+
+	// MaxProxyContainsBatchSize limits the number of distinct digests sent
+	// to the proxy backend in one batched existence check. A value <= 0
+	// restores the default.
+	MaxProxyContainsBatchSize int `yaml:"max_proxy_contains_batch_size"`
+
 	// Fields that are created by combinations of the flags above.
 	ProxyBackend cache.Proxy
 	TLSConfig    *tls.Config
@@ -191,7 +207,10 @@ func newFromArgs(dir string, maxSize int, storageMode string, zstdImplementation
 	logTimezone string,
 	maxSizeHardLimit int,
 	maxBlobSize int64,
-	maxProxyBlobSize int64) (*Config, error) {
+	maxProxyBlobSize int64,
+	proxyWriteBackMode string,
+	maxProxyWriteBackBlobSize int64,
+	maxProxyContainsBatchSize int) (*Config, error) {
 
 	c := Config{
 		HTTPAddress:                 httpAddress,
@@ -230,6 +249,9 @@ func newFromArgs(dir string, maxSize int, storageMode string, zstdImplementation
 		LogTimezone:                 logTimezone,
 		MaxBlobSize:                 maxBlobSize,
 		MaxProxyBlobSize:            maxProxyBlobSize,
+		ProxyWriteBackMode:          proxyWriteBackMode,
+		MaxProxyWriteBackBlobSize:   maxProxyWriteBackBlobSize,
+		MaxProxyContainsBatchSize:   maxProxyContainsBatchSize,
 	}
 
 	err := validateConfig(&c)
@@ -260,16 +282,18 @@ func newFromYamlFile(path string) (*Config, error) {
 func NewFromYaml(data []byte) (*Config, error) {
 	yc := YamlConfig{
 		Config: Config{
-			StorageMode:            "zstd",
-			ZstdImplementation:     "go",
-			NumUploaders:           100,
-			MinTLSVersion:          "1.0",
-			MaxQueuedUploads:       1000000,
-			MaxBlobSize:            math.MaxInt64,
-			MaxProxyBlobSize:       math.MaxInt64,
-			MetricsDurationBuckets: defaultDurationBuckets,
-			AccessLogLevel:         "all",
-			LogTimezone:            "UTC",
+			StorageMode:               "zstd",
+			ZstdImplementation:        "go",
+			NumUploaders:              100,
+			MinTLSVersion:             "1.0",
+			MaxQueuedUploads:          1000000,
+			MaxBlobSize:               math.MaxInt64,
+			MaxProxyBlobSize:          math.MaxInt64,
+			ProxyWriteBackMode:        "all",
+			MaxProxyWriteBackBlobSize: math.MaxInt64,
+			MetricsDurationBuckets:    defaultDurationBuckets,
+			AccessLogLevel:            "all",
+			LogTimezone:               "UTC",
 		},
 	}
 
@@ -403,6 +427,30 @@ func validateConfig(c *Config) error {
 
 	if c.MaxProxyBlobSize <= 0 {
 		return errors.New("the 'max_proxy_blob_size' flag/key must be a positive integer")
+	}
+
+	// An unset writeback mode means the default, "all".
+	if c.ProxyWriteBackMode == "" {
+		c.ProxyWriteBackMode = "all"
+	}
+	switch c.ProxyWriteBackMode {
+	case "all", "cas", "ac", "none":
+	default:
+		return fmt.Errorf(
+			"the 'proxy_writeback_mode' flag/key must be one of \"all\", \"cas\", \"ac\" or \"none\", got: %q",
+			c.ProxyWriteBackMode)
+	}
+
+	if c.MaxProxyWriteBackBlobSize < 0 {
+		return errors.New("the 'max_proxy_writeback_blob_size' flag/key must be a non-negative integer")
+	}
+	// Zero (or unset) means unlimited.
+	if c.MaxProxyWriteBackBlobSize == 0 {
+		c.MaxProxyWriteBackBlobSize = math.MaxInt64
+	}
+
+	if c.MaxProxyContainsBatchSize < 0 {
+		return errors.New("the 'max_proxy_contains_batch_size' flag/key must be a non-negative integer")
 	}
 
 	if c.GoogleCloudStorage != nil && c.HTTPBackend != nil && c.S3CloudStorage != nil {
@@ -716,5 +764,8 @@ func get(ctx *cli.Context) (*Config, error) {
 		ctx.Int("max_size_hard_limit"),
 		ctx.Int64("max_blob_size"),
 		ctx.Int64("max_proxy_blob_size"),
+		ctx.String("proxy_writeback_mode"),
+		ctx.Int64("max_proxy_writeback_blob_size"),
+		ctx.Int("max_proxy_contains_batch_size"),
 	)
 }

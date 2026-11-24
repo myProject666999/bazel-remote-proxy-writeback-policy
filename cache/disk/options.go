@@ -61,7 +61,6 @@ func WithProxyBackend(proxy cache.Proxy) Option {
 
 		if proxy != nil {
 			c.diskCache.proxy = proxy
-			c.diskCache.spawnContainsQueueWorkers()
 		}
 
 		return nil
@@ -75,6 +74,33 @@ func WithProxyMaxBlobSize(maxProxyBlobSize int64) Option {
 		}
 
 		c.diskCache.maxProxyBlobSize = maxProxyBlobSize
+		return nil
+	}
+}
+
+// WithWritebackPolicy configures which locally committed entries are also
+// written back to the proxy backend. When not set, the default policy writes
+// every entry back, preserving the historical behavior.
+func WithWritebackPolicy(policy WritebackPolicy) Option {
+	return func(c *CacheConfig) error {
+		c.diskCache.writeback = policy
+		policy.warnAboutDanglingAC(log.Default())
+		return nil
+	}
+}
+
+// WithProxyContainsBatchSize limits the number of distinct digests sent to
+// the proxy backend in a single batched existence check. It is independent
+// of the local lookup batch size. A non-positive value restores the default.
+func WithProxyContainsBatchSize(size int) Option {
+	return func(c *CacheConfig) error {
+		if size < 0 {
+			return fmt.Errorf("invalid proxy contains batch size: %d", size)
+		}
+		if size == 0 {
+			size = defaultProxyContainsBatchSize
+		}
+		c.diskCache.proxyContainsBatchSize = size
 		return nil
 	}
 }

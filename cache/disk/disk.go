@@ -77,8 +77,15 @@ type diskCache struct {
 	zstd             zstdimpl.ZstdImpl
 	maxBlobSize      int64
 	maxProxyBlobSize int64
-	accessLogger     *log.Logger
-	containsQueue    chan proxyCheck
+	// writeback decides which locally committed entries are also uploaded
+	// to the proxy backend. The default policy writes everything back.
+	writeback WritebackPolicy
+	// proxyContainsBatchSize bounds the number of distinct digests sent to
+	// the proxy backend in a single existence check. It is independent of
+	// the local lookup batch size.
+	proxyContainsBatchSize int
+	accessLogger           *log.Logger
+	containsQueue          chan proxyCheck
 
 	// Limit the number of simultaneous file removals and filesystem write
 	// operations (apart from atime updates, which we hope are fast).
@@ -115,6 +122,8 @@ func (c *diskCache) RegisterMetrics() {
 	c.lru.RegisterMetrics()
 
 	prometheus.MustRegister(c.gaugeCacheAge)
+	prometheus.MustRegister(writebackRejected)
+	prometheus.MustRegister(proxyContainsErrors)
 
 	// Update the cache age metric on a static interval
 	// Note: this could be modeled as a GuageFunc that updates as needed
@@ -339,12 +348,20 @@ func (c *diskCache) Put(ctx context.Context, kind cache.EntryKind, hash string, 
 	r = nil // We read all the data from r.
 
 	if c.proxy != nil {
-		rc, err := os.Open(blobFile)
-		if err != nil {
-			log.Println("Failed to proxy Put:", err)
+		// Apply the writeback policy before touching the proxy backend, so
+		// that the same rules hold for every backend implementation. Only
+		// entries that passed local validation and are about to be
+		// committed successfully reach this point.
+		if ok, reason := c.writeback.shouldWriteBack(kind, size); ok {
+			rc, err := os.Open(blobFile)
+			if err != nil {
+				log.Println("Failed to proxy Put:", err)
+			} else {
+				// Doesn't block, should be fast.
+				c.proxy.Put(ctx, kind, hash, size, sizeOnDisk, rc)
+			}
 		} else {
-			// Doesn't block, should be fast.
-			c.proxy.Put(ctx, kind, hash, size, sizeOnDisk, rc)
+			writebackRejected.WithLabelValues(string(reason)).Inc()
 		}
 	}
 

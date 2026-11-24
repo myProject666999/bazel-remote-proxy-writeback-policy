@@ -85,6 +85,45 @@ type Proxy interface {
 	Contains(ctx context.Context, kind EntryKind, hash string, size int64) (bool, int64)
 }
 
+// ProxyContainsResult is the per-digest result of a batch existence check
+// against a proxy backend.
+type ProxyContainsResult struct {
+	// Hash is the hex-encoded digest hash that this result refers to.
+	Hash string
+
+	// Exists reports whether the item is available on the proxy backend.
+	// When Err is non-nil, Exists is always false: backend errors are
+	// treated as misses so that a broken backend never causes a
+	// non-existent item to be reported as present.
+	Exists bool
+
+	// Size is the logical size of the item if it exists, and -1
+	// otherwise (including when Err is set).
+	Size int64
+
+	// Err is the error that occurred while checking this digest, if any.
+	// A non-nil Err means that the existence could not be determined; the
+	// digest must be treated as missing for the current response.
+	Err error
+}
+
+// BatchProxy is an optional extension of Proxy, implemented by proxy
+// backends that can check the existence of several digests in a single
+// request. The disk cache uses this path when available and falls back to
+// calling Proxy.Contains once per digest otherwise, so the observable
+// results are identical. Implementations are expected to be safe for
+// concurrent use.
+type BatchProxy interface {
+	Proxy
+
+	// ContainsMany checks the existence of several CAS blobs at once.
+	// Every entry of hashes is the hex-encoded hash of a digest whose
+	// (uncompressed) logical size is the corresponding entry of sizes, so
+	// the two slices always have the same length and result index i
+	// corresponds to hashes[i].
+	ContainsMany(ctx context.Context, hashes []string, sizes []int64) []ProxyContainsResult
+}
+
 // TransformActionCacheKey takes an ActionCache key and an instance name
 // and returns a new ActionCache key to use instead. If the instance name
 // is empty, then the original key is returned unchanged.

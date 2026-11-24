@@ -171,6 +171,9 @@ func (c *s3Cache) UploadFile(item backendproxy.UploadReq) {
 			},
 		}, // metadata
 	)
+	if err != nil {
+		backendproxy.RecordBackendError()
+	}
 
 	logResponse(c.accessLogger, "UPLOAD", c.bucket, c.objectKey(item.Hash, item.Kind), err)
 
@@ -193,7 +196,7 @@ func (c *s3Cache) Put(ctx context.Context, kind cache.EntryKind, hash string, lo
 	}:
 	default:
 		c.errorLogger.Printf("too many uploads queued\n")
-		_ = rc.Close()
+		backendproxy.RecordQueueFull(rc)
 	}
 }
 

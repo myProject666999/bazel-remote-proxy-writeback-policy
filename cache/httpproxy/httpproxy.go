@@ -53,6 +53,7 @@ func (r *remoteHTTPProxyCache) UploadFile(item backendproxy.UploadReq) {
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodHead, url, nil)
 	if err != nil {
+		backendproxy.RecordBackendError()
 		r.errorLogger.Printf("INTERNAL ERROR, FAILED TO SETUP HTTP PROXY UPLOAD %s: %s", url, err)
 		_ = item.Rc.Close()
 		return
@@ -67,6 +68,7 @@ func (r *remoteHTTPProxyCache) UploadFile(item backendproxy.UploadReq) {
 
 	req, err = http.NewRequestWithContext(context.Background(), http.MethodPut, url, item.Rc)
 	if err != nil {
+		backendproxy.RecordBackendError()
 		r.errorLogger.Printf("INTERNAL ERROR, FAILED TO SETUP HTTP PROXY UPLOAD %s: %s", url, err)
 
 		// item.Rc will be closed if we call req.Do(), but not if we
@@ -80,15 +82,22 @@ func (r *remoteHTTPProxyCache) UploadFile(item backendproxy.UploadReq) {
 
 	rsp, err = r.remote.Do(req)
 	if err != nil {
+		backendproxy.RecordBackendError()
 		r.errorLogger.Printf("HTTP %s UPLOAD: %s", url, err.Error())
 		return
 	}
 	_, err = io.Copy(io.Discard, rsp.Body)
 	if err != nil {
+		backendproxy.RecordBackendError()
 		r.errorLogger.Printf("HTTP %s UPLOAD: %s", url, err.Error())
 		return
 	}
 	_ = rsp.Body.Close()
+
+	if rsp.StatusCode != http.StatusOK && rsp.StatusCode != http.StatusCreated &&
+		rsp.StatusCode != http.StatusNoContent {
+		backendproxy.RecordBackendError()
+	}
 
 	logResponse(r.accessLogger, "UPLOAD", rsp.StatusCode, url)
 }
@@ -153,7 +162,7 @@ func (r *remoteHTTPProxyCache) Put(ctx context.Context, kind cache.EntryKind, ha
 	case r.uploadQueue <- item:
 	default:
 		r.errorLogger.Printf("too many uploads queued")
-		_ = rc.Close()
+		backendproxy.RecordQueueFull(rc)
 	}
 }
 

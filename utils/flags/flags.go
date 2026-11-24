@@ -200,6 +200,35 @@ func GetCliFlags() []cli.Flag {
 			DefaultText: strconv.FormatInt(math.MaxInt64, 10),
 			EnvVars:     []string{"BAZEL_REMOTE_MAX_PROXY_BLOB_SIZE"},
 		},
+		&cli.StringFlag{
+			Name:  "proxy_writeback_mode",
+			Value: "all",
+			Usage: "Controls which locally committed cache entries are also written back to the proxy backend. " +
+				"Allowed values: \"all\" (both AC and CAS, the default and historical behavior), " +
+				"\"cas\" (only CAS entries), \"ac\" (only AC entries, which may leave dangling entries " +
+				"on the backend) or \"none\" (never write back, for a read-only backend).",
+			DefaultText: "\"all\"",
+			EnvVars:     []string{"BAZEL_REMOTE_PROXY_WRITEBACK_MODE"},
+		},
+		&cli.Int64Flag{
+			Name:  "max_proxy_writeback_blob_size",
+			Value: math.MaxInt64,
+			Usage: "The maximum logical/uncompressed CAS blob size that will be written back (uploaded) " +
+				"to the proxy backend. This is independent of --max_proxy_blob_size, which limits what is " +
+				"downloaded. AC entries are not size-limited. The default disables the limit.",
+			DefaultText: strconv.FormatInt(math.MaxInt64, 10),
+			EnvVars:     []string{"BAZEL_REMOTE_MAX_PROXY_WRITEBACK_BLOB_SIZE"},
+		},
+		&cli.IntFlag{
+			Name:  "max_proxy_contains_batch_size",
+			Value: 0,
+			Usage: "The maximum number of distinct, locally missing digests sent to the proxy backend in " +
+				"a single batched existence check. Only affects proxy backends that support batching " +
+				"(currently the gRPC proxy); other backends check one digest at a time. 0 selects the " +
+				"built-in default. Duplicate digests in a request are always checked once.",
+			DefaultText: "0, ie the built-in default",
+			EnvVars:     []string{"BAZEL_REMOTE_MAX_PROXY_CONTAINS_BATCH_SIZE"},
+		},
 		&cli.IntFlag{
 			Name:    "num_uploaders",
 			Value:   100,

@@ -9,6 +9,7 @@ go_library(
         "lru.go",
         "metrics.go",
         "options.go",
+        "writeback.go",
     ],
     importpath = "github.com/buchgr/bazel-remote/v2/cache/disk",
     visibility = ["//visibility:public"],
@@ -35,9 +36,11 @@ go_test(
     name = "go_default_test",
     srcs = [
         "disk_test.go",
+        "findmissing_batch_test.go",
         "findmissing_test.go",
         "lru_test.go",
         "proxy_verify_test.go",
+        "writeback_test.go",
     ],
     embed = [":go_default_library"],
     deps = [

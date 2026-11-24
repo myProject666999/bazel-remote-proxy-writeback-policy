@@ -70,10 +70,12 @@ func New(dir string, maxSizeBytes int64, opts ...Option) (Cache, error) {
 		dir: dir,
 
 		// Not using config here, to avoid test import cycles.
-		storageMode:      casblob.Zstandard,
-		zstd:             zi,
-		maxBlobSize:      math.MaxInt64,
-		maxProxyBlobSize: math.MaxInt64,
+		storageMode:            casblob.Zstandard,
+		zstd:                   zi,
+		maxBlobSize:            math.MaxInt64,
+		maxProxyBlobSize:       math.MaxInt64,
+		writeback:              DefaultWritebackPolicy(),
+		proxyContainsBatchSize: defaultProxyContainsBatchSize,
 
 		// Acquire 1 of these before starting filesystem writes/deletes, or
 		// reject filesystem writes upon failure (since this will create a
